@@ -14,7 +14,7 @@ class Batch:
     def __init__(self, torch_batch, pad_index, use_cuda=False):
         """
         Create a new joey batch from a torch batch.
-        This batch extends torch text's batch attributes with src and trg
+        This batch extends torch text's batch attributes with src, trg, factor
         length, masks, number of non-padded tokens in trg.
         Furthermore, it can be sorted by src length.
 
@@ -27,11 +27,15 @@ class Batch:
         self.nseqs = self.src.size(0)
         self.trg_input = None
         self.trg = None
+        self.factor = None
         self.trg_mask = None
         self.trg_length = None
         self.ntokens = None
         self.use_cuda = use_cuda
         self.device = torch.device("cuda" if self.use_cuda else "cpu")
+
+        if hasattr(torch_batch, "factor"):
+            self.factor, self.factor_lengths = torch_batch.factor
 
         if hasattr(torch_batch, "trg"):
             trg, trg_length = torch_batch.trg
@@ -57,6 +61,9 @@ class Batch:
         self.src_mask = self.src_mask.to(self.device)
         self.src_length = self.src_length.to(self.device)
 
+        if self.factor is not None:
+            self.factor = self.factor.cuda()
+
         if self.trg_input is not None:
             self.trg_input = self.trg_input.to(self.device)
             self.trg = self.trg.to(self.device)
@@ -81,6 +88,12 @@ class Batch:
             sorted_trg_length = self.trg_length[perm_index]
             sorted_trg_mask = self.trg_mask[perm_index]
             sorted_trg = self.trg[perm_index]
+
+        if self.factor is not None:
+            sorted_factor = self.factor[perm_index]
+            sorted_factor_lengths = self.factor_lengths[perm_index]
+            self.factor = sorted_factor
+            self.factor_lengths = sorted_factor_lengths
 
         self.src = sorted_src
         self.src_length = sorted_src_length

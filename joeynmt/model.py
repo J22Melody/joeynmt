@@ -8,8 +8,10 @@ import logging
 from torch import nn, Tensor
 import torch.nn.functional as F
 
+from typing import Optional
+
 from joeynmt.initialization import initialize_model
-from joeynmt.embeddings import Embeddings
+from joeynmt.embeddings import Embeddings, concatenate_embeddings, sum_embeddings
 from joeynmt.encoders import Encoder, RecurrentEncoder, TransformerEncoder
 from joeynmt.decoders import Decoder, RecurrentDecoder, TransformerDecoder
 from joeynmt.constants import PAD_TOKEN, EOS_TOKEN, BOS_TOKEN
@@ -30,7 +32,10 @@ class Model(nn.Module):
                  src_embed: Embeddings,
                  trg_embed: Embeddings,
                  src_vocab: Vocabulary,
-                 trg_vocab: Vocabulary) -> None:
+                 trg_vocab: Vocabulary,
+                 factor_embed: Optional[Embeddings] = None,
+                 factor_vocab: Optional[Vocabulary] = None,
+                 factor_combine: str = "add") -> None:
         """
         Create a new encoder-decoder model
 
@@ -40,18 +45,22 @@ class Model(nn.Module):
         :param trg_embed: target embedding
         :param src_vocab: source vocabulary
         :param trg_vocab: target vocabulary
+        :param factor_combine: How to combine source and factor embeddings
         """
         super().__init__()
 
         self.src_embed = src_embed
         self.trg_embed = trg_embed
+        self.factor_embed = factor_embed
         self.encoder = encoder
         self.decoder = decoder
         self.src_vocab = src_vocab
         self.trg_vocab = trg_vocab
+        self.factor_vocab = factor_vocab
         self.bos_index = self.trg_vocab.stoi[BOS_TOKEN]
         self.pad_index = self.trg_vocab.stoi[PAD_TOKEN]
         self.eos_index = self.trg_vocab.stoi[EOS_TOKEN]
+        self.factor_combine = factor_combine
         self._loss_function = None # set by the TrainManager
 
     @property
@@ -109,7 +118,7 @@ class Model(nn.Module):
 
     # pylint: disable=arguments-differ
     def _encode_decode(self, src: Tensor, trg_input: Tensor, src_mask: Tensor,
-                       src_length: Tensor, trg_mask: Tensor = None, **kwargs) \
+                       src_length: Tensor, trg_mask: Tensor = None, factor: Optional[Tensor] = None, **kwargs) \
             -> (Tensor, Tensor, Tensor, Tensor):
         """
         First encodes the source sentence.
@@ -120,11 +129,13 @@ class Model(nn.Module):
         :param src_mask: source mask
         :param src_length: length of source inputs
         :param trg_mask: target mask
+        :param factor: source factor input
         :return: decoder outputs
         """
         encoder_output, encoder_hidden = self._encode(src=src,
                                                       src_length=src_length,
                                                       src_mask=src_mask,
+                                                      factor=factor,
                                                       **kwargs)
 
         unroll_steps = trg_input.size(1)
@@ -135,7 +146,7 @@ class Model(nn.Module):
                             unroll_steps=unroll_steps,
                             trg_mask=trg_mask, **kwargs)
 
-    def _encode(self, src: Tensor, src_length: Tensor, src_mask: Tensor,
+    def _encode(self, src: Tensor, src_length: Tensor, src_mask: Tensor, factor: Optional[Tensor] = None,
                 **_kwargs) -> (Tensor, Tensor):
         """
         Encodes the source sentence.
@@ -143,9 +154,21 @@ class Model(nn.Module):
         :param src:
         :param src_length:
         :param src_mask:
+        :param factor:
         :return: encoder outputs (output, hidden_concat)
         """
-        return self.encoder(self.src_embed(src), src_length, src_mask,
+        src_embedded = self.src_embed(src)
+
+        if factor is not None:
+            assert self.factor_embed is not None, "Factor embedding must exist if factors are in data batch."
+
+            factor_embedded = self.factor_embed(factor)
+
+            if self.factor_combine == "concatenate":
+                src_embedded = concatenate_embeddings(src_embedded=src_embedded, factor_embedded=factor_embedded)
+            else:
+                src_embedded = sum_embeddings(src_embedded=src_embedded, factor_embedded=factor_embedded)
+        return self.encoder(src_embedded, src_length, src_mask,
                             **_kwargs)
 
     def _decode(self, encoder_output: Tensor, encoder_hidden: Tensor,
@@ -186,9 +209,9 @@ class Model(nn.Module):
                "\tencoder=%s,\n" \
                "\tdecoder=%s,\n" \
                "\tsrc_embed=%s,\n" \
+               "\tfactor_embed=%s,\n" \
                "\ttrg_embed=%s)" % (self.__class__.__name__, self.encoder,
-                                    self.decoder, self.src_embed,
-                                    self.trg_embed)
+                                    self.decoder, self.src_embed, self.factor_embed, self.trg_embed)
 
 
 class _DataParallel(nn.DataParallel):
@@ -202,18 +225,25 @@ class _DataParallel(nn.DataParallel):
 
 def build_model(cfg: dict = None,
                 src_vocab: Vocabulary = None,
-                trg_vocab: Vocabulary = None) -> Model:
+                trg_vocab: Vocabulary = None,
+                factor_vocab: Optional[Vocabulary] = None) -> Model:
     """
     Build and initialize the model according to the configuration.
 
     :param cfg: dictionary configuration containing model specifications
     :param src_vocab: source vocabulary
     :param trg_vocab: target vocabulary
+    :param factor_vocab: source factor vocabulary
     :return: built and initialized model
     """
     logger.info("Building an encoder-decoder model...")
     src_padding_idx = src_vocab.stoi[PAD_TOKEN]
     trg_padding_idx = trg_vocab.stoi[PAD_TOKEN]
+
+    if factor_vocab is not None:
+        factor_padding_idx = factor_vocab.stoi[PAD_TOKEN]
+    else:
+        factor_padding_idx = None
 
     src_embed = Embeddings(
         **cfg["encoder"]["embeddings"], vocab_size=len(src_vocab),
@@ -222,6 +252,7 @@ def build_model(cfg: dict = None,
     # this ties source and target embeddings
     # for softmax layer tying, see further below
     if cfg.get("tied_embeddings", False):
+
         if src_vocab.itos == trg_vocab.itos:
             # share embeddings for src and trg
             trg_embed = src_embed
@@ -233,20 +264,49 @@ def build_model(cfg: dict = None,
             **cfg["decoder"]["embeddings"], vocab_size=len(trg_vocab),
             padding_idx=trg_padding_idx)
 
+    if factor_vocab is None:
+        use_factor = False
+    else:
+        use_factor = True
+
+    if use_factor:
+        factor_embed = Embeddings(
+            **cfg["encoder"]["factor_embeddings"], vocab_size=len(factor_vocab),
+            padding_idx=factor_padding_idx)
+    else:
+        factor_embed = None
+
     # build encoder
     enc_dropout = cfg["encoder"].get("dropout", 0.)
     enc_emb_dropout = cfg["encoder"]["embeddings"].get("dropout", enc_dropout)
+
+    factor_combine = cfg["encoder"].get("factor_combine", "add")
+
+    if factor_combine not in ["add", "concatenate"]:
+        raise ConfigurationError(
+            "Factor combination method must be one of 'add', 'concatenate'.")
+
+    if use_factor and factor_combine == "concatenate":
+        encoder_emb_size = src_embed.embedding_dim + factor_embed.embedding_dim
+    else:
+        encoder_emb_size = src_embed.embedding_dim
+
+    if use_factor and factor_combine == "add":
+        if src_embed.embedding_dim != factor_embed.embedding_dim:
+            raise ConfigurationError("For factor combination method 'add', source embeddings and "
+                                     "factor embeddings must be of the same size.")
+
     if cfg["encoder"].get("type", "recurrent") == "transformer":
-        assert cfg["encoder"]["embeddings"]["embedding_dim"] == \
+        assert encoder_emb_size == \
                cfg["encoder"]["hidden_size"], \
-               "for transformer, emb_size must be hidden_size"
+               "for transformer, hidden_size must be src_embed size (+ factor_embed size if they exist)"
 
         encoder = TransformerEncoder(**cfg["encoder"],
-                                     emb_size=src_embed.embedding_dim,
+                                     emb_size=encoder_emb_size,
                                      emb_dropout=enc_emb_dropout)
     else:
         encoder = RecurrentEncoder(**cfg["encoder"],
-                                   emb_size=src_embed.embedding_dim,
+                                   emb_size=encoder_emb_size,
                                    emb_dropout=enc_emb_dropout)
 
     # build decoder
@@ -263,7 +323,9 @@ def build_model(cfg: dict = None,
 
     model = Model(encoder=encoder, decoder=decoder,
                   src_embed=src_embed, trg_embed=trg_embed,
-                  src_vocab=src_vocab, trg_vocab=trg_vocab)
+                  src_vocab=src_vocab, trg_vocab=trg_vocab,
+                  factor_embed=factor_embed, factor_vocab=factor_vocab,
+                  factor_combine=factor_combine)
 
     # tie softmax layer with trg embeddings
     if cfg.get("tied_softmax", False):
@@ -274,11 +336,10 @@ def build_model(cfg: dict = None,
         else:
             raise ConfigurationError(
                 "For tied_softmax, the decoder embedding_dim and decoder "
-                "hidden_size must be the same."
-                "The decoder must be a Transformer.")
+                "hidden_size must be the same.")
 
     # custom initialization of model parameters
-    initialize_model(model, cfg, src_padding_idx, trg_padding_idx)
+    initialize_model(model, cfg, src_padding_idx, trg_padding_idx, factor_padding_idx)
 
     # initialize embeddings from file
     pretrained_enc_embed_path = cfg["encoder"]["embeddings"].get(

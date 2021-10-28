@@ -578,7 +578,8 @@ class TrainManager:
 
         valid_score, valid_loss, valid_ppl, valid_sources, \
         valid_sources_raw, valid_references, valid_hypotheses, \
-        valid_hypotheses_raw, valid_attention_scores = \
+        valid_hypotheses_raw, valid_attention_scores, \
+        valid_factors, valid_factors_raw = \
             validate_on_data(
                 batch_size=self.eval_batch_size,
                 batch_class=self.batch_class,
@@ -639,7 +640,9 @@ class TrainManager:
                            sources=valid_sources,
                            hypotheses_raw=valid_hypotheses_raw,
                            hypotheses=valid_hypotheses,
-                           references=valid_references)
+                           references=valid_references,
+                           factors=valid_factors,
+                           factors_raw=[f for f in valid_factors_raw] if valid_factors_raw is not None else None)
 
         valid_duration = time.time() - valid_start_time
         logger.info(
@@ -709,7 +712,9 @@ class TrainManager:
                       references: List[str],
                       sources_raw: List[List[str]] = None,
                       hypotheses_raw: List[List[str]] = None,
-                      references_raw: List[List[str]] = None) -> None:
+                      references_raw: List[List[str]] = None,
+                      factors: List[str] = None,
+                      factors_raw: List[List[str]] = None) -> None:
         """
         Log a the first `self.log_valid_sents` sentences from given examples.
 
@@ -719,6 +724,8 @@ class TrainManager:
         :param sources_raw: raw sources (list of list of tokens)
         :param hypotheses_raw: raw hypotheses (list of list of tokens)
         :param references_raw: raw references (list of list of tokens)
+        :param factors: decoded factors (list of strings)
+        :param factors_raw: raw factors (list of list of tokens)
         """
         for p in self.log_valid_sents:
 
@@ -729,12 +736,16 @@ class TrainManager:
 
             if sources_raw is not None:
                 logger.debug("\tRaw source:     %s", sources_raw[p])
+            if factors_raw is not None:
+                logger.debug("\tRaw factor:     %s", factors_raw[p])
             if references_raw is not None:
                 logger.debug("\tRaw reference:  %s", references_raw[p])
             if hypotheses_raw is not None:
                 logger.debug("\tRaw hypothesis: %s", hypotheses_raw[p])
 
             logger.info("\tSource:     %s", sources[p])
+            if factors is not None:
+                logger.info("\tFactor:     %s", factors[p])
             logger.info("\tReference:  %s", references[p])
             logger.info("\tHypothesis: %s", hypotheses[p])
 
@@ -813,11 +824,11 @@ def train(cfg_file: str, skip_test: bool = False) -> None:
     set_seed(seed=cfg["training"].get("random_seed", 42))
 
     # load the data
-    train_data, dev_data, test_data, src_vocab, trg_vocab = load_data(
+    train_data, dev_data, test_data, src_vocab, trg_vocab, factor_vocab = load_data(
         data_cfg=cfg["data"])
 
     # build an encoder-decoder model
-    model = build_model(cfg["model"], src_vocab=src_vocab, trg_vocab=trg_vocab)
+    model = build_model(cfg["model"], src_vocab=src_vocab, trg_vocab=trg_vocab, factor_vocab=factor_vocab)
 
     # for training management, e.g. early stopping and model selection
     trainer = TrainManager(model=model, config=cfg)
@@ -832,7 +843,8 @@ def train(cfg_file: str, skip_test: bool = False) -> None:
                   valid_data=dev_data,
                   test_data=test_data,
                   src_vocab=src_vocab,
-                  trg_vocab=trg_vocab)
+                  trg_vocab=trg_vocab,
+                  factor_vocab=factor_vocab)
 
     logger.info(str(model))
 
@@ -841,6 +853,10 @@ def train(cfg_file: str, skip_test: bool = False) -> None:
     src_vocab.to_file(src_vocab_file)
     trg_vocab_file = "{}/trg_vocab.txt".format(cfg["training"]["model_dir"])
     trg_vocab.to_file(trg_vocab_file)
+
+    if factor_vocab is not None:
+        factor_vocab_file = "{}/factor_vocab.txt".format(cfg["training"]["model_dir"])
+        factor_vocab.to_file(factor_vocab_file)
 
     # train the model
     trainer.train_and_validate(train_data=train_data, valid_data=dev_data)

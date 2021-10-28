@@ -148,7 +148,7 @@ def build_vocab(field: str, max_size: int, min_freq: int, dataset: Dataset,
     Builds vocabulary for a torchtext `field` from given`dataset` or
     `vocab_file`.
 
-    :param field: attribute e.g. "src"
+    :param field: attribute e.g. "src", "trg", "factor"
     :param max_size: maximum size of vocabulary
     :param min_freq: minimum frequency for an item to be included
     :param dataset: dataset to load data for field from
@@ -184,6 +184,8 @@ def build_vocab(field: str, max_size: int, min_freq: int, dataset: Dataset,
                 tokens.extend(i.src)
             elif field == "trg":
                 tokens.extend(i.trg)
+            elif field == "factor":
+                tokens.extend(i.factor)
 
         counter = Counter(tokens)
         if min_freq > -1:

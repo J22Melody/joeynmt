@@ -27,7 +27,7 @@ class Embeddings(nn.Module):
                  vocab_size: int = 0,
                  padding_idx: int = 1,
                  freeze: bool = False,
-                 **kwargs):
+                 **kwargs) -> None:
         """
         Create new embeddings for the vocabulary.
         Use scaling for the Transformer.
@@ -118,3 +118,43 @@ class Embeddings(nn.Module):
                        "of the JoeyNMT's vocabulary.".format(
                         len(embed_dict), len(vocab),
                         len(embed_dict)/len(vocab)))
+
+def concatenate_embeddings(src_embedded: Tensor, factor_embedded: Tensor) -> Tensor:
+    """
+    Concatenate embeddings to combine source words and their factors.
+
+    :param src_embedded: embedded src inputs,
+        shape (batch_size, src_len, src_embed_size)
+    :param factor_embedded:
+        shape (batch_size, src_len, factor_embed_size)
+    :return:
+    """
+
+    # check shapes
+    assert src_embedded.shape[0] == factor_embedded.shape[0]
+    assert src_embedded.shape[1] == factor_embedded.shape[1]
+
+    concat_embedded = torch.cat((src_embedded, factor_embedded), -1)
+
+    return concat_embedded
+
+
+def sum_embeddings(src_embedded: Tensor, factor_embedded: Tensor) -> Tensor:
+    """
+    Sum embeddings to combine source words and their factors.
+
+    :param src_embedded: embedded src inputs,
+        shape (batch_size, src_len, src_embed_size)
+    :param factor_embedded:
+        shape (batch_size, src_len, factor_embed_size)
+    :return:
+    """
+
+    # check shapes
+    assert src_embedded.shape[0] == factor_embedded.shape[0]
+    assert src_embedded.shape[1] == factor_embedded.shape[1]
+    assert src_embedded.shape[2] == factor_embedded.shape[2]
+
+    sum_embedded = src_embedded + factor_embedded
+
+    return sum_embedded
