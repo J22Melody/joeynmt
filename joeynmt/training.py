@@ -871,7 +871,8 @@ def train(cfg_file: str, skip_test: bool = False) -> None:
             "dev": dev_data,
             "test": test_data,
             "src_vocab": src_vocab,
-            "trg_vocab": trg_vocab
+            "trg_vocab": trg_vocab,
+            "factor_vocab": factor_vocab,
         }
         test(cfg_file,
              ckpt=ckpt,

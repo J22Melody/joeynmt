@@ -157,31 +157,31 @@ def log_data_info(train_data: Dataset, valid_data: Dataset, test_data: Dataset,
                 len(test_data) if test_data is not None else 0)
 
     if factor_vocab is None:
-        logger("First training example:\n\t[SRC] %s\n\t[TRG] %s",
+        logger.info("First training example:\n\t[SRC] %s\n\t[TRG] %s",
             " ".join(vars(train_data[0])['src']),
             " ".join(vars(train_data[0])['trg']))
     else:
-        logger("First training example:\n\t[SRC] %s\n\t[SRC_FACTOR] %s\n\t[TRG] %s",
+        logger.info("First training example:\n\t[SRC] %s\n\t[SRC_FACTOR] %s\n\t[TRG] %s",
                          " ".join(vars(train_data[0])['src']),
                          " ".join(vars(train_data[0])['factor']),
                          " ".join(vars(train_data[0])['trg']))
 
-    logger("First 10 words (src): %s", " ".join(
+    logger.info("First 10 words (src): %s", " ".join(
         '(%d) %s' % (i, t) for i, t in enumerate(src_vocab.itos[:10])))
 
     if factor_vocab is not None:
-        logger("First 10 words (src_factor): %s", " ".join(
+        logger.info("First 10 words (src_factor): %s", " ".join(
             '(%d) %s' % (i, t) for i, t in enumerate(factor_vocab.itos[:10])))
 
-    logger("First 10 words (trg): %s", " ".join(
+    logger.info("First 10 words (trg): %s", " ".join(
         '(%d) %s' % (i, t) for i, t in enumerate(trg_vocab.itos[:10])))
 
-    logger("Number of Src words (types): %d", len(src_vocab))
+    logger.info("Number of Src words (types): %d", len(src_vocab))
 
     if factor_vocab is not None:
-        logger("Number of Src_factor words (types): %d", len(factor_vocab))
+        logger.info("Number of Src_factor words (types): %d", len(factor_vocab))
 
-    logger("Number of Trg words (types): %d", len(trg_vocab))
+    logger.info("Number of Trg words (types): %d", len(trg_vocab))
 
 
 def load_config(path="configs/default.yaml") -> dict:

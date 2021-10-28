@@ -323,6 +323,7 @@ def test(cfg_file,
         data_to_predict = {"dev": datasets["dev"], "test": datasets["test"]}
         src_vocab = datasets["src_vocab"]
         trg_vocab = datasets["trg_vocab"]
+        factor_vocab = datasets["factor_vocab"]
 
     # parse test args
     batch_size, batch_type, use_cuda, device, n_gpu, level, eval_metric, \

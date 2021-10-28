@@ -316,7 +316,7 @@ class MonoFactorDataset(Dataset):
         super(MonoFactorDataset, self).__init__(examples, fields, **kwargs)
 
 
-class FactoredTranslationDataset(data.Dataset):
+class FactoredTranslationDataset(Dataset):
     """Defines a dataset for factored machine translation."""
 
     @staticmethod
