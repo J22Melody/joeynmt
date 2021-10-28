@@ -12,7 +12,7 @@ import logging
 
 # pylint: disable=no-name-in-module
 from torchtext.legacy.datasets import TranslationDataset
-from torchtext.legacy.data import Dataset, Iterator, Field, Example
+from torchtext.legacy.data import Dataset, Iterator, Field, Example, interleave_keys
 
 from joeynmt.constants import UNK_TOKEN, EOS_TOKEN, BOS_TOKEN, PAD_TOKEN
 from joeynmt.vocabulary import build_vocab, Vocabulary
@@ -308,7 +308,7 @@ class MonoFactorDataset(Dataset):
             factor_part = parts[1]
 
             if src_part != '' and factor_part != '':
-                examples.append(data.Example.fromlist(
+                examples.append(Example.fromlist(
                     [src_part, factor_part], fields))
 
         src_file.close()
@@ -321,7 +321,7 @@ class FactoredTranslationDataset(Dataset):
 
     @staticmethod
     def sort_key(ex):
-        return data.interleave_keys(len(ex.src), len(ex.trg))
+        return interleave_keys(len(ex.src), len(ex.trg))
 
     def __init__(self, path, exts, fields, **kwargs):
         """Create a TranslationDataset given paths and fields.
@@ -345,7 +345,7 @@ class FactoredTranslationDataset(Dataset):
                 for src_line, trg_line, factor_line in zip(src_file, trg_file, factor_file):
                     src_line, trg_line, factor_line = src_line.strip(), trg_line.strip(), factor_line.strip()
                     if src_line != '' and trg_line != '' and factor_line != '':
-                        examples.append(data.Example.fromlist(
+                        examples.append(Example.fromlist(
                             [src_line, trg_line, factor_line], fields))
 
         super(FactoredTranslationDataset, self).__init__(examples, fields, **kwargs)
