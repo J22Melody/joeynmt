@@ -51,6 +51,7 @@ def load_data(data_cfg: dict, datasets: list = None)\
     # load data from files
     src_lang = data_cfg["src"]
     trg_lang = data_cfg["trg"]
+    factor_lang = data_cfg["factor"]
     train_path = data_cfg.get("train", None)
     dev_path = data_cfg.get("dev", None)
     test_path = data_cfg.get("test", None)
@@ -88,7 +89,7 @@ def load_data(data_cfg: dict, datasets: list = None)\
         logger.info("Loading training data...")
 
         if use_factor:
-            exts = ("." + src_lang, "." + trg_lang, ".factor",)
+            exts = ("." + src_lang, "." + trg_lang, "." + factor_lang,)
             fields = (src_field, trg_field, factor_field,)
 
             dataset_class = FactoredTranslationDataset
