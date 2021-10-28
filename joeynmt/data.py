@@ -149,9 +149,9 @@ def load_data(data_cfg: dict, datasets: list = None)\
     dev_data = None
     if "dev" in datasets and dev_path is not None:
         logger.info("Loading dev data...")
-        dev_data = TranslationDataset(path=dev_path,
-                                      exts=("." + src_lang, "." + trg_lang),
-                                      fields=(src_field, trg_field))
+        dev_data = dataset_class(path=dev_path,
+                                 exts=exts,
+                                 fields=fields)
 
     test_data = None
     if "test" in datasets and test_path is not None:
