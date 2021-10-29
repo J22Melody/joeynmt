@@ -94,8 +94,8 @@ def validate_on_data(model: Model, data: Dataset,
         shuffle=False, train=False)
     valid_sources_raw = data.src
 
-    if "factor" in data.fields:
-        valid_factors_raw = data.factor
+    if "factor0" in data.fields:
+        valid_factors_raw = data.factor0
     else:
         valid_factors_raw = None
 
@@ -112,7 +112,6 @@ def validate_on_data(model: Model, data: Dataset,
         total_nseqs = 0
         for valid_batch in iter(valid_iter):
             # run as during training to get validation loss (e.g. xent)
-
             batch = batch_class(valid_batch, pad_index, use_cuda=use_cuda)
             if batch.nseqs < 1:
                 continue
@@ -164,7 +163,7 @@ def validate_on_data(model: Model, data: Dataset,
         valid_hypotheses = [join_char.join(t) for t in decoded_valid]
 
         if valid_factors_raw is not None:
-            valid_factors = [join_char.join(f) for f in data.factor]
+            valid_factors = [join_char.join(f) for f in data.factor0]
         else:
             valid_factors = None
 
@@ -316,14 +315,14 @@ def test(cfg_file,
             assert os.path.isfile(trg_vocab_file), f"{trg_vocab_file} not found"
             cfg["data"]["trg_vocab"] = trg_vocab_file
         # load data
-        _, dev_data, test_data, src_vocab, trg_vocab, factor_vocab = load_data(
+        _, dev_data, test_data, src_vocab, trg_vocab, factor_vocabs = load_data(
             data_cfg=cfg["data"], datasets=["dev", "test"])
         data_to_predict = {"dev": dev_data, "test": test_data}
     else:  # avoid to load data again
         data_to_predict = {"dev": datasets["dev"], "test": datasets["test"]}
         src_vocab = datasets["src_vocab"]
         trg_vocab = datasets["trg_vocab"]
-        factor_vocab = datasets["factor_vocab"]
+        factor_vocabs = datasets["factor_vocabs"]
 
     # parse test args
     batch_size, batch_type, use_cuda, device, n_gpu, level, eval_metric, \
@@ -336,7 +335,7 @@ def test(cfg_file,
     model_checkpoint = load_checkpoint(ckpt, use_cuda=use_cuda)
 
     # build model and load parameters into it
-    model = build_model(cfg["model"], src_vocab=src_vocab, trg_vocab=trg_vocab, factor_vocab=factor_vocab)
+    model = build_model(cfg["model"], src_vocab=src_vocab, trg_vocab=trg_vocab, factor_vocabs=factor_vocabs)
     model.load_state_dict(model_checkpoint["model_state"])
 
     if use_cuda:
@@ -428,7 +427,7 @@ def translate(cfg_file: str,
 
         if use_factor:
             test_data = MonoFactorDataset(path=tmp_name, ext=tmp_suffix,
-                                          src_field=src_field, factor_field=factor_field)
+                                          src_field=src_field, factor_fields=factor_fields)
         else:
             test_data = MonoDataset(path=tmp_name, ext=tmp_suffix,
                                     field=src_field)
@@ -469,12 +468,13 @@ def translate(cfg_file: str,
     trg_vocab = Vocabulary(file=trg_vocab_file)
 
     use_factor = cfg["data"].get("use_factor", False)
+    factor_langs = cfg["data"].get("factors")
     if use_factor:
-        factor_vocab_file = cfg["data"].get(
-        "factor_vocab", cfg["training"]["model_dir"] + "/factor_vocab.txt")
-        factor_vocab = Vocabulary(file=factor_vocab_file)
+        factor_vocab_files = cfg["data"].get(
+        "factor_vocabs", [cfg["training"]["model_dir"] + "/factor_vocab{}.txt".format(i) for i, _ in enumerate(factor_langs)])
+        factor_vocabs = [Vocabulary(file=factor_vocab_file) for factor_vocab_file in factor_vocab_files]
     else:
-        factor_vocab = None
+        factor_vocabs = None
 
     data_cfg = cfg["data"]
     level = data_cfg["level"]
@@ -488,14 +488,15 @@ def translate(cfg_file: str,
     src_field.vocab = src_vocab
 
     if use_factor:
-        factor_field = Field(init_token=None, eos_token=EOS_TOKEN,
+        factor_fields = [Field(init_token=None, eos_token=EOS_TOKEN,
                           pad_token=PAD_TOKEN, tokenize=tok_fun,
                           batch_first=True, lower=lowercase,
                           unk_token=UNK_TOKEN,
-                          include_lengths=True)
-        factor_field.vocab = factor_vocab
+                          include_lengths=True) for _ in factor_langs]
+        for i, field in enumerate(factor_fields):
+            field.vocab = factor_vocabs[i]
     else:
-        factor_field = None
+        factor_fields = None
 
     # parse test args
     batch_size, batch_type, use_cuda, device, n_gpu, level, _, \
@@ -507,7 +508,7 @@ def translate(cfg_file: str,
     model_checkpoint = load_checkpoint(ckpt, use_cuda=use_cuda)
 
     # build model and load parameters into it
-    model = build_model(cfg["model"], src_vocab=src_vocab, trg_vocab=trg_vocab, factor_vocab=factor_vocab)
+    model = build_model(cfg["model"], src_vocab=src_vocab, trg_vocab=trg_vocab, factor_vocabs=factor_vocabs)
     model.load_state_dict(model_checkpoint["model_state"])
 
     if use_cuda:
@@ -516,7 +517,7 @@ def translate(cfg_file: str,
     if not sys.stdin.isatty():
         # input file given
         if use_factor:
-            test_data = MonoFactorDataset(path=sys.stdin, ext="", src_field=src_field, factor_field=factor_field)
+            test_data = MonoFactorDataset(path=sys.stdin, ext="", src_field=src_field, factor_fields=factor_fields)
         else:
             test_data = MonoDataset(path=sys.stdin, ext="", field=src_field)
         all_hypotheses = _translate_data(test_data)
