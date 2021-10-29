@@ -75,7 +75,7 @@ class Batch:
         self.src_length = self.src_length.to(self.device)
 
         if self.factors is not None:
-            self.factors = self.factors.cuda()
+            self.factors = self.factors.to(self.device)
 
         if self.trg_input is not None:
             self.trg_input = self.trg_input.to(self.device)
