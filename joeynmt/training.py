@@ -824,11 +824,11 @@ def train(cfg_file: str, skip_test: bool = False) -> None:
     set_seed(seed=cfg["training"].get("random_seed", 42))
 
     # load the data
-    train_data, dev_data, test_data, src_vocab, trg_vocab, factor_vocab = load_data(
+    train_data, dev_data, test_data, src_vocab, trg_vocab, factor_vocabs = load_data(
         data_cfg=cfg["data"])
 
     # build an encoder-decoder model
-    model = build_model(cfg["model"], src_vocab=src_vocab, trg_vocab=trg_vocab, factor_vocab=factor_vocab)
+    model = build_model(cfg["model"], src_vocab=src_vocab, trg_vocab=trg_vocab, factor_vocabs=factor_vocabs)
 
     # for training management, e.g. early stopping and model selection
     trainer = TrainManager(model=model, config=cfg)
@@ -844,7 +844,7 @@ def train(cfg_file: str, skip_test: bool = False) -> None:
                   test_data=test_data,
                   src_vocab=src_vocab,
                   trg_vocab=trg_vocab,
-                  factor_vocab=factor_vocab)
+                  factor_vocabs=factor_vocabs)
 
     logger.info(str(model))
 
@@ -854,9 +854,10 @@ def train(cfg_file: str, skip_test: bool = False) -> None:
     trg_vocab_file = "{}/trg_vocab.txt".format(cfg["training"]["model_dir"])
     trg_vocab.to_file(trg_vocab_file)
 
-    if factor_vocab is not None:
-        factor_vocab_file = "{}/factor_vocab.txt".format(cfg["training"]["model_dir"])
-        factor_vocab.to_file(factor_vocab_file)
+    if factor_vocabs is not None:
+        for i, vocab in enumerate(factor_vocabs):
+            factor_vocab_file = "{}/factor_vocab{}.txt".format(cfg["training"]["model_dir"], i)
+            vocab.to_file(factor_vocab_file)
 
     # train the model
     trainer.train_and_validate(train_data=train_data, valid_data=dev_data)
@@ -872,7 +873,7 @@ def train(cfg_file: str, skip_test: bool = False) -> None:
             "test": test_data,
             "src_vocab": src_vocab,
             "trg_vocab": trg_vocab,
-            "factor_vocab": factor_vocab,
+            "factor_vocabs": factor_vocabs,
         }
         test(cfg_file,
              ckpt=ckpt,

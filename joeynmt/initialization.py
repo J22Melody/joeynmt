@@ -5,6 +5,7 @@ Implements custom initialization
 """
 
 import math
+from typing import List
 
 import torch
 from torch import nn, Tensor
@@ -57,7 +58,7 @@ def xavier_uniform_n_(w: Tensor, gain: float = 1., n: int = 4) -> None:
 
 # pylint: disable=too-many-branches
 def initialize_model(model: nn.Module, cfg: dict, src_padding_idx: int,
-                     trg_padding_idx: int, factor_padding_idx: int) -> None:
+                     trg_padding_idx: int, factor_padding_idxs: List[int]) -> None:
     """
     This initializes a model based on the provided config.
 
@@ -93,7 +94,7 @@ def initialize_model(model: nn.Module, cfg: dict, src_padding_idx: int,
     :param cfg: the model configuration
     :param src_padding_idx: index of source padding token
     :param trg_padding_idx: index of target padding token
-    :param factor_padding_idx: index of source factor padding token
+    :param factor_padding_idxs: list of index of source factor padding token
     """
 
     # defaults: xavier, embeddings: normal 0.01, biases: zeros, no orthogonal
@@ -154,8 +155,9 @@ def initialize_model(model: nn.Module, cfg: dict, src_padding_idx: int,
         model.src_embed.lut.weight.data[src_padding_idx].zero_()
         model.trg_embed.lut.weight.data[trg_padding_idx].zero_()
 
-        if model.factor_embed is not None:
-            model.factor_embed.lut.weight.data[factor_padding_idx].zero_()
+        if model.factor_embeds is not None:
+            for i, embed in enumerate(model.factor_embeds):
+                embed.lut.weight.data[factor_padding_idxs[i]].zero_()
 
         orthogonal = cfg.get("init_rnn_orthogonal", False)
         lstm_forget_gate = cfg.get("lstm_forget_gate", 1.)

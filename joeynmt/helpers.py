@@ -141,7 +141,7 @@ def set_seed(seed: int) -> None:
 
 
 def log_data_info(train_data: Dataset, valid_data: Dataset, test_data: Dataset,
-                  src_vocab: Vocabulary, trg_vocab: Vocabulary, factor_vocab: Optional[Vocabulary]) -> None:
+                  src_vocab: Vocabulary, trg_vocab: Vocabulary, factor_vocabs: Optional[List[Vocabulary]]) -> None:
     """
     Log statistics of data and vocabulary.
 
@@ -150,37 +150,37 @@ def log_data_info(train_data: Dataset, valid_data: Dataset, test_data: Dataset,
     :param test_data:
     :param src_vocab:
     :param trg_vocab:
-    :param factor_vocab:
+    :param factor_vocabs:
     """
     logger = logging.getLogger(__name__)
     logger.info("Data set sizes: \n\ttrain %d,\n\tvalid %d,\n\ttest %d",
                 len(train_data), len(valid_data),
                 len(test_data) if test_data is not None else 0)
 
-    if factor_vocab is None:
+    if factor_vocabs is None:
         logger.info("First training example:\n\t[SRC] %s\n\t[TRG] %s",
             " ".join(vars(train_data[0])['src']),
             " ".join(vars(train_data[0])['trg']))
     else:
-        logger.info("First training example:\n\t[SRC] %s\n\t[SRC_FACTOR] %s\n\t[TRG] %s",
+        logger.info("First training example:\n\t[SRC] %s\n\t[SRC_FACTOR0] %s\n\t[TRG] %s",
                          " ".join(vars(train_data[0])['src']),
-                         " ".join(vars(train_data[0])['factor']),
+                         " ".join(vars(train_data[0])['factor0']),
                          " ".join(vars(train_data[0])['trg']))
 
     logger.info("First 10 words (src): %s", " ".join(
         '(%d) %s' % (i, t) for i, t in enumerate(src_vocab.itos[:10])))
 
-    if factor_vocab is not None:
-        logger.info("First 10 words (src_factor): %s", " ".join(
-            '(%d) %s' % (i, t) for i, t in enumerate(factor_vocab.itos[:10])))
+    if factor_vocabs is not None:
+        logger.info("First 10 words (src_factor0): %s", " ".join(
+            '(%d) %s' % (i, t) for i, t in enumerate(factor_vocabs[0].itos[:10])))
 
     logger.info("First 10 words (trg): %s", " ".join(
         '(%d) %s' % (i, t) for i, t in enumerate(trg_vocab.itos[:10])))
 
     logger.info("Number of Src words (types): %d", len(src_vocab))
 
-    if factor_vocab is not None:
-        logger.info("Number of Src_factor words (types): %d", len(factor_vocab))
+    if factor_vocabs is not None:
+        logger.info("Number of Src_factor0 words (types): %d", len(factor_vocabs[0]))
 
     logger.info("Number of Trg words (types): %d", len(trg_vocab))
 

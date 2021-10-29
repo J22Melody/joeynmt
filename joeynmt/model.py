@@ -8,7 +8,7 @@ import logging
 from torch import nn, Tensor
 import torch.nn.functional as F
 
-from typing import Optional
+from typing import Optional, List
 
 from joeynmt.initialization import initialize_model
 from joeynmt.embeddings import Embeddings, concatenate_embeddings, sum_embeddings
@@ -33,8 +33,8 @@ class Model(nn.Module):
                  trg_embed: Embeddings,
                  src_vocab: Vocabulary,
                  trg_vocab: Vocabulary,
-                 factor_embed: Optional[Embeddings] = None,
-                 factor_vocab: Optional[Vocabulary] = None,
+                 factor_embeds: Optional[List[Embeddings]] = None,
+                 factor_vocabs: Optional[List[Vocabulary]] = None,
                  factor_combine: str = "add") -> None:
         """
         Create a new encoder-decoder model
@@ -45,18 +45,20 @@ class Model(nn.Module):
         :param trg_embed: target embedding
         :param src_vocab: source vocabulary
         :param trg_vocab: target vocabulary
+        :param factor_embeds: factor embeddings
+        :param factor_vocabs: factor vocabularies
         :param factor_combine: How to combine source and factor embeddings
         """
         super().__init__()
 
         self.src_embed = src_embed
         self.trg_embed = trg_embed
-        self.factor_embed = factor_embed
+        self.factor_embeds = factor_embeds
         self.encoder = encoder
         self.decoder = decoder
         self.src_vocab = src_vocab
         self.trg_vocab = trg_vocab
-        self.factor_vocab = factor_vocab
+        self.factor_vocabs = factor_vocabs
         self.bos_index = self.trg_vocab.stoi[BOS_TOKEN]
         self.pad_index = self.trg_vocab.stoi[PAD_TOKEN]
         self.eos_index = self.trg_vocab.stoi[EOS_TOKEN]
@@ -118,7 +120,7 @@ class Model(nn.Module):
 
     # pylint: disable=arguments-differ
     def _encode_decode(self, src: Tensor, trg_input: Tensor, src_mask: Tensor,
-                       src_length: Tensor, trg_mask: Tensor = None, factor: Optional[Tensor] = None, **kwargs) \
+                       src_length: Tensor, trg_mask: Tensor = None, factors: Optional[Tensor] = None, **kwargs) \
             -> (Tensor, Tensor, Tensor, Tensor):
         """
         First encodes the source sentence.
@@ -135,7 +137,7 @@ class Model(nn.Module):
         encoder_output, encoder_hidden = self._encode(src=src,
                                                       src_length=src_length,
                                                       src_mask=src_mask,
-                                                      factor=factor,
+                                                      factors=factors,
                                                       **kwargs)
 
         unroll_steps = trg_input.size(1)
@@ -146,7 +148,7 @@ class Model(nn.Module):
                             unroll_steps=unroll_steps,
                             trg_mask=trg_mask, **kwargs)
 
-    def _encode(self, src: Tensor, src_length: Tensor, src_mask: Tensor, factor: Optional[Tensor] = None,
+    def _encode(self, src: Tensor, src_length: Tensor, src_mask: Tensor, factors: Optional[Tensor] = None,
                 **_kwargs) -> (Tensor, Tensor):
         """
         Encodes the source sentence.
@@ -154,20 +156,25 @@ class Model(nn.Module):
         :param src:
         :param src_length:
         :param src_mask:
-        :param factor:
+        :param factors:
         :return: encoder outputs (output, hidden_concat)
         """
         src_embedded = self.src_embed(src)
 
-        if factor is not None:
-            assert self.factor_embed is not None, "Factor embedding must exist if factors are in data batch."
+        if factors is not None:
+            assert self.factor_embeds is not None, "Factor embedding must exist if factors are in data batch."
 
-            factor_embedded = self.factor_embed(factor)
+            factors_embedded = []
+            for i, factor in enumerate(factors):
+                factor_embedded = self.factor_embeds[i](factor)
+                factors_embedded.append(factor_embedded)
 
             if self.factor_combine == "concatenate":
-                src_embedded = concatenate_embeddings(src_embedded=src_embedded, factor_embedded=factor_embedded)
+                for factor_embedded in factors_embedded:
+                    src_embedded = concatenate_embeddings(src_embedded=src_embedded, factor_embedded=factor_embedded)
             else:
-                src_embedded = sum_embeddings(src_embedded=src_embedded, factor_embedded=factor_embedded)
+                for factor_embedded in factors_embedded:
+                    src_embedded = sum_embeddings(src_embedded=src_embedded, factor_embedded=factor_embedded)
         return self.encoder(src_embedded, src_length, src_mask,
                             **_kwargs)
 
@@ -209,9 +216,9 @@ class Model(nn.Module):
                "\tencoder=%s,\n" \
                "\tdecoder=%s,\n" \
                "\tsrc_embed=%s,\n" \
-               "\tfactor_embed=%s,\n" \
+               "\tfactor_embeds=%s,\n" \
                "\ttrg_embed=%s)" % (self.__class__.__name__, self.encoder,
-                                    self.decoder, self.src_embed, self.factor_embed, self.trg_embed)
+                                    self.decoder, self.src_embed, self.factor_embeds, self.trg_embed)
 
 
 class _DataParallel(nn.DataParallel):
@@ -226,24 +233,24 @@ class _DataParallel(nn.DataParallel):
 def build_model(cfg: dict = None,
                 src_vocab: Vocabulary = None,
                 trg_vocab: Vocabulary = None,
-                factor_vocab: Optional[Vocabulary] = None) -> Model:
+                factor_vocabs: Optional[List[Vocabulary]] = None) -> Model:
     """
     Build and initialize the model according to the configuration.
 
     :param cfg: dictionary configuration containing model specifications
     :param src_vocab: source vocabulary
     :param trg_vocab: target vocabulary
-    :param factor_vocab: source factor vocabulary
+    :param factor_vocabs: source factor vocabulary
     :return: built and initialized model
     """
     logger.info("Building an encoder-decoder model...")
     src_padding_idx = src_vocab.stoi[PAD_TOKEN]
     trg_padding_idx = trg_vocab.stoi[PAD_TOKEN]
 
-    if factor_vocab is not None:
-        factor_padding_idx = factor_vocab.stoi[PAD_TOKEN]
+    if factor_vocabs is not None:
+        factor_padding_idxs = [vocab.stoi[PAD_TOKEN] for vocab in factor_vocabs]
     else:
-        factor_padding_idx = None
+        factor_padding_idxs = None
 
     src_embed = Embeddings(
         **cfg["encoder"]["embeddings"], vocab_size=len(src_vocab),
@@ -264,17 +271,17 @@ def build_model(cfg: dict = None,
             **cfg["decoder"]["embeddings"], vocab_size=len(trg_vocab),
             padding_idx=trg_padding_idx)
 
-    if factor_vocab is None:
+    if factor_vocabs is None:
         use_factor = False
     else:
         use_factor = True
 
     if use_factor:
-        factor_embed = Embeddings(
-            **cfg["encoder"]["factor_embeddings"], vocab_size=len(factor_vocab),
-            padding_idx=factor_padding_idx)
+        factor_embeds = [Embeddings(
+            **cfg["encoder"]["factor_embeddings"], vocab_size=len(vocab),
+            padding_idx=factor_padding_idxs[i]) for i, vocab in enumerate(factor_vocabs)]
     else:
-        factor_embed = None
+        factor_embeds = None
 
     # build encoder
     enc_dropout = cfg["encoder"].get("dropout", 0.)
@@ -287,14 +294,15 @@ def build_model(cfg: dict = None,
             "Factor combination method must be one of 'add', 'concatenate'.")
 
     if use_factor and factor_combine == "concatenate":
-        encoder_emb_size = src_embed.embedding_dim + factor_embed.embedding_dim
+        encoder_emb_size = src_embed.embedding_dim + sum(embed.embedding_dim for embed in factor_embeds)
     else:
         encoder_emb_size = src_embed.embedding_dim
 
     if use_factor and factor_combine == "add":
-        if src_embed.embedding_dim != factor_embed.embedding_dim:
-            raise ConfigurationError("For factor combination method 'add', source embeddings and "
-                                     "factor embeddings must be of the same size.")
+        for factor_embed in factor_embeds:
+            if src_embed.embedding_dim != factor_embed.embedding_dim:
+                raise ConfigurationError("For factor combination method 'add', source embeddings and "
+                                        "factor embeddings must be of the same size.")
 
     if cfg["encoder"].get("type", "recurrent") == "transformer":
         assert encoder_emb_size == \
@@ -324,7 +332,7 @@ def build_model(cfg: dict = None,
     model = Model(encoder=encoder, decoder=decoder,
                   src_embed=src_embed, trg_embed=trg_embed,
                   src_vocab=src_vocab, trg_vocab=trg_vocab,
-                  factor_embed=factor_embed, factor_vocab=factor_vocab,
+                  factor_embeds=factor_embeds, factor_vocabs=factor_vocabs,
                   factor_combine=factor_combine)
 
     # tie softmax layer with trg embeddings
@@ -339,7 +347,7 @@ def build_model(cfg: dict = None,
                 "hidden_size must be the same.")
 
     # custom initialization of model parameters
-    initialize_model(model, cfg, src_padding_idx, trg_padding_idx, factor_padding_idx)
+    initialize_model(model, cfg, src_padding_idx, trg_padding_idx, factor_padding_idxs)
 
     # initialize embeddings from file
     pretrained_enc_embed_path = cfg["encoder"]["embeddings"].get(

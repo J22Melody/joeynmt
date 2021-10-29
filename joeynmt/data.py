@@ -7,7 +7,7 @@ import sys
 import random
 import os
 import os.path
-from typing import Optional
+from typing import Optional, List
 import logging
 
 # pylint: disable=no-name-in-module
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 def load_data(data_cfg: dict, datasets: list = None)\
-        -> (Dataset, Dataset, Optional[Dataset], Vocabulary, Vocabulary, Optional[Vocabulary]):
+        -> (Dataset, Dataset, Optional[Dataset], Vocabulary, Vocabulary, Optional[List[Vocabulary]]):
     """
     Load train, dev and optionally test data as specified in configuration.
     Vocabularies are created from the training set with a limit of `voc_limit`
@@ -43,7 +43,7 @@ def load_data(data_cfg: dict, datasets: list = None)\
         - test_data: testdata set if given, otherwise None
         - src_vocab: source vocabulary extracted from training data
         - trg_vocab: target vocabulary extracted from training data
-        - factor_vocab: factor vocabulary extracted from source training data
+        - factor_vocabs: factor vocabulary extracted from source training data
     """
     if datasets is None:
         datasets = ["train", "dev", "test"]
@@ -51,7 +51,7 @@ def load_data(data_cfg: dict, datasets: list = None)\
     # load data from files
     src_lang = data_cfg["src"]
     trg_lang = data_cfg["trg"]
-    factor_lang = data_cfg["factor"]
+    factor_langs = data_cfg["factors"]
     train_path = data_cfg.get("train", None)
     dev_path = data_cfg.get("dev", None)
     test_path = data_cfg.get("test", None)
@@ -78,19 +78,20 @@ def load_data(data_cfg: dict, datasets: list = None)\
                       tokenize=tok_fun, batch_first=True, lower=lowercase,
                       include_lengths=True)
 
-    factor_field = Field(init_token=None, eos_token=EOS_TOKEN,
-                         pad_token=PAD_TOKEN, tokenize=tok_fun,
-                         unk_token=UNK_TOKEN,
-                         batch_first=True, lower=lowercase,
-                         include_lengths=True)
+    factor_fields = [Field(init_token=None, eos_token=EOS_TOKEN,
+                           pad_token=PAD_TOKEN, tokenize=tok_fun,
+                           unk_token=UNK_TOKEN,
+                           batch_first=True, lower=lowercase,
+                           include_lengths=True) for _ in factor_langs]
 
     train_data = None
     if "train" in datasets and train_path is not None:
         logger.info("Loading training data...")
 
         if use_factor:
-            exts = ("." + src_lang, "." + trg_lang, "." + factor_lang,)
-            fields = (src_field, trg_field, factor_field,)
+            factor_exts = ["." + x for x in factor_langs]
+            exts = ("." + src_lang, "." + trg_lang, *factor_exts,)
+            fields = (src_field, trg_field, *factor_fields,)
 
             dataset_class = FactoredTranslationDataset
         else:
@@ -127,7 +128,7 @@ def load_data(data_cfg: dict, datasets: list = None)\
 
     src_vocab_file = data_cfg.get("src_vocab", None)
     trg_vocab_file = data_cfg.get("trg_vocab", None)
-    factor_vocab_file = data_cfg.get("factor_vocab", None)
+    factor_vocab_files = data_cfg.get("factor_vocabs", [None] * len(factor_langs))
 
     assert (train_data is not None) or (src_vocab_file is not None)
     assert (train_data is not None) or (trg_vocab_file is not None)
@@ -140,11 +141,11 @@ def load_data(data_cfg: dict, datasets: list = None)\
                             max_size=trg_max_size,
                             dataset=train_data, vocab_file=trg_vocab_file)
     if use_factor:
-        factor_vocab = build_vocab(field="factor", min_freq=factor_min_freq,
-                                max_size=factor_max_size,
-                                dataset=train_data, vocab_file=factor_vocab_file)
+        factor_vocabs = [build_vocab(field='factor{}'.format(i), min_freq=factor_min_freq,
+                                     max_size=factor_max_size,
+                                     dataset=train_data, vocab_file=x) for i, x in enumerate(factor_vocab_files)]
     else:
-        factor_vocab = None
+        factor_vocabs = None
 
     dev_data = None
     if "dev" in datasets and dev_path is not None:
@@ -167,10 +168,11 @@ def load_data(data_cfg: dict, datasets: list = None)\
                                     field=src_field)
     src_field.vocab = src_vocab
     trg_field.vocab = trg_vocab
-    factor_field.vocab = factor_vocab
+    for i, field in enumerate(factor_fields):
+        field.vocab = factor_vocabs[i]
 
     logger.info("Data loaded.")
-    return train_data, dev_data, test_data, src_vocab, trg_vocab, factor_vocab
+    return train_data, dev_data, test_data, src_vocab, trg_vocab, factor_vocabs
 
 
 # pylint: disable=global-at-module-level
@@ -276,7 +278,7 @@ class MonoFactorDataset(Dataset):
     def sort_key(ex):
         return len(ex.src)
 
-    def __init__(self, path: str, ext: str, src_field: Field, factor_field: Field, **kwargs) -> None:
+    def __init__(self, path: str, ext: str, src_field: Field, factor_fields: List[Field], **kwargs) -> None:
         """
         Create a monolingual dataset (=only sources) given path and field.
         Assumes that each line of the input file is structured as follows:
@@ -290,7 +292,7 @@ class MonoFactorDataset(Dataset):
         """
 
         fields = [('src', src_field),
-                  ('factor', factor_field)]
+                *[('factor{}'.format(i), field) for i, field in enumerate(factor_fields)]]
 
         if hasattr(path, "readline"):  # special usage: stdin
             src_file = path
@@ -306,11 +308,11 @@ class MonoFactorDataset(Dataset):
             parts = [part.strip() for part in src_line.split("|||")]
 
             src_part = parts[0]
-            factor_part = parts[1]
+            factor_parts = parts[1:]
 
-            if src_part != '' and factor_part != '':
+            if src_part != '' and factor_parts[0] != '':
                 examples.append(Example.fromlist(
-                    [src_part, factor_part], fields))
+                    [src_part, *factor_parts], fields))
 
         src_file.close()
 
@@ -335,19 +337,24 @@ class FactoredTranslationDataset(Dataset):
                 data.Dataset.
         """
         if not isinstance(fields[0], (tuple, list)):
-            fields = [('src', fields[0]), ('trg', fields[1]), ('factor', fields[2])]
+            fields = [('src', fields[0]), ('trg', fields[1]), 
+                    *[('factor{}'.format(i), field) for i, field in enumerate(fields[2:])]]
 
-        src_path, trg_path, factor_path = tuple(os.path.expanduser(path + x) for x in exts)
+        src_path, trg_path, *factor_paths = tuple(os.path.expanduser(path + x) for x in exts)
 
         examples = []
-        with io.open(src_path, mode='r', encoding='utf-8') as src_file, \
-                io.open(trg_path, mode='r', encoding='utf-8') as trg_file, \
-                io.open(factor_path, mode='r', encoding='utf-8') as factor_file:
-                for src_line, trg_line, factor_line in zip(src_file, trg_file, factor_file):
-                    src_line, trg_line, factor_line = src_line.strip(), trg_line.strip(), factor_line.strip()
-                    if src_line != '' and trg_line != '' and factor_line != '':
-                        examples.append(Example.fromlist(
-                            [src_line, trg_line, factor_line], fields))
+        src_file = io.open(src_path, mode='r', encoding='utf-8')
+        trg_file = io.open(trg_path, mode='r', encoding='utf-8')
+        factor_files = [io.open(factor_path, mode='r', encoding='utf-8') for factor_path in factor_paths]
+        for src_line, trg_line, *factor_lines in zip(src_file, trg_file, *factor_files):
+            src_line, trg_line, factor_lines = src_line.strip(), trg_line.strip(), [line.strip() for line in factor_lines]
+            if src_line != '' and trg_line != '' and factor_lines[0] != '':
+                examples.append(Example.fromlist(
+                    [src_line, trg_line, *factor_lines], fields))
+        src_file.close()
+        trg_file.close()
+        for file in factor_files:
+            file.close()
 
         super(FactoredTranslationDataset, self).__init__(examples, fields, **kwargs)
 
