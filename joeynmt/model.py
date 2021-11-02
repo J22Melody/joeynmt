@@ -277,9 +277,9 @@ def build_model(cfg: dict = None,
         use_factor = True
 
     if use_factor:
-        factor_embeds = [Embeddings(
+        factor_embeds = nn.ModuleList([Embeddings(
             **cfg["encoder"]["factor_embeddings"], vocab_size=len(vocab),
-            padding_idx=factor_padding_idxs[i]) for i, vocab in enumerate(factor_vocabs)]
+            padding_idx=factor_padding_idxs[i]) for i, vocab in enumerate(factor_vocabs)])
     else:
         factor_embeds = None
 

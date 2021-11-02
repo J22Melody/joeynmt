@@ -184,9 +184,6 @@ class TrainManager:
         self.device = torch.device("cuda" if self.use_cuda else "cpu")
         if self.use_cuda:
             self.model.to(self.device)
-            # FIXME: move factor embeddings to right device, how to do this automatically?
-            for embed in self.model.factor_embeds:
-                embed.lut.to(self.device)
 
         # fp16
         self.fp16 = train_config.get("fp16", False)
