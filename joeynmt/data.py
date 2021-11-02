@@ -84,21 +84,21 @@ def load_data(data_cfg: dict, datasets: list = None)\
                            batch_first=True, lower=lowercase,
                            include_lengths=True) for _ in factor_langs]
 
+    if use_factor:
+        factor_exts = ["." + x for x in factor_langs]
+        exts = ("." + src_lang, "." + trg_lang, *factor_exts,)
+        fields = (src_field, trg_field, *factor_fields,)
+
+        dataset_class = FactoredTranslationDataset
+    else:
+        exts = ("." + src_lang, "." + trg_lang,)
+        fields = (src_field, trg_field,)
+
+        dataset_class = TranslationDataset
+
     train_data = None
     if "train" in datasets and train_path is not None:
         logger.info("Loading training data...")
-
-        if use_factor:
-            factor_exts = ["." + x for x in factor_langs]
-            exts = ("." + src_lang, "." + trg_lang, *factor_exts,)
-            fields = (src_field, trg_field, *factor_fields,)
-
-            dataset_class = FactoredTranslationDataset
-        else:
-            exts = ("." + src_lang, "." + trg_lang,)
-            fields = (src_field, trg_field,)
-
-            dataset_class = TranslationDataset
 
         train_data = dataset_class(path=train_path,
                                    exts=exts,

@@ -314,6 +314,14 @@ def test(cfg_file,
         if "trg_vocab" not in cfg["data"]:
             assert os.path.isfile(trg_vocab_file), f"{trg_vocab_file} not found"
             cfg["data"]["trg_vocab"] = trg_vocab_file
+        if cfg["data"].get("use_factor", False) and "factor_vocabs" not in cfg["data"]:
+            for i in range(len(cfg["data"]["factors"])):
+                factor_vocab_file = os.path.join(model_dir, "factor_vocab{}.txt".format(i))
+                assert os.path.isfile(factor_vocab_file), f"{factor_vocab_file} not found"
+                if "factor_vocabs" in cfg["data"]:
+                    cfg["data"]["factor_vocabs"].append(factor_vocab_file)
+                else:
+                    cfg["data"]["factor_vocabs"] = [factor_vocab_file]
         # load data
         _, dev_data, test_data, src_vocab, trg_vocab, factor_vocabs = load_data(
             data_cfg=cfg["data"], datasets=["dev", "test"])

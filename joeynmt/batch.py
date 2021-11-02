@@ -45,10 +45,9 @@ class Batch:
                 idx = idx + 1
             else:
                 break
-        self.factors = torch.stack(self.factors)
-        # self.factors = torch.swapaxes(self.factors, 0, 1)
-        self.factors_lengths = torch.stack(self.factors_lengths)
-        # self.factors_lengths = torch.swapaxes(self.factors_lengths, 0, 1)
+        if self.factors and self.factors_lengths:
+            self.factors = torch.stack(self.factors)
+            self.factors_lengths = torch.stack(self.factors_lengths)
 
         if hasattr(torch_batch, "trg"):
             trg, trg_length = torch_batch.trg
