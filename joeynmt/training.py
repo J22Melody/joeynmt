@@ -744,7 +744,7 @@ class TrainManager:
                 logger.debug("\tRaw hypothesis: %s", hypotheses_raw[p])
 
             logger.info("\tSource:     %s", sources[p])
-            if factors is not None:
+            if factors:
                 logger.info("\tFactor:     %s", factors[p])
             logger.info("\tReference:  %s", references[p])
             logger.info("\tHypothesis: %s", hypotheses[p])

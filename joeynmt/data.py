@@ -51,7 +51,7 @@ def load_data(data_cfg: dict, datasets: list = None)\
     # load data from files
     src_lang = data_cfg["src"]
     trg_lang = data_cfg["trg"]
-    factor_langs = data_cfg["factors"]
+    factor_langs = data_cfg.get("factors", [])
     train_path = data_cfg.get("train", None)
     dev_path = data_cfg.get("dev", None)
     test_path = data_cfg.get("test", None)

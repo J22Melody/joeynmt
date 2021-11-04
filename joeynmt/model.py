@@ -161,7 +161,7 @@ class Model(nn.Module):
         """
         src_embedded = self.src_embed(src)
 
-        if factors is not None:
+        if factors:
             assert self.factor_embeds is not None, "Factor embedding must exist if factors are in data batch."
 
             factors_embedded = []

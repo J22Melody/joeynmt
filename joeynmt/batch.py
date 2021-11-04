@@ -73,7 +73,7 @@ class Batch:
         self.src_mask = self.src_mask.to(self.device)
         self.src_length = self.src_length.to(self.device)
 
-        if self.factors is not None:
+        if self.factors:
             self.factors = self.factors.to(self.device)
 
         if self.trg_input is not None:
@@ -101,7 +101,7 @@ class Batch:
             sorted_trg_mask = self.trg_mask[perm_index]
             sorted_trg = self.trg[perm_index]
 
-        if self.factors is not None:
+        if self.factors:
             sorted_factors = self.factors[:, perm_index]
             sorted_factors_lengths = self.factors_lengths[:, perm_index]
             self.factors = sorted_factors
