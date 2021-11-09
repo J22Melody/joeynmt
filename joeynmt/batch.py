@@ -27,8 +27,8 @@ class Batch:
         self.nseqs = self.src.size(0)
         self.trg_input = None
         self.trg = None
-        self.factors = []
-        self.factors_lengths = []
+        self.factors = None
+        self.factors_lengths = None
         self.trg_mask = None
         self.trg_length = None
         self.ntokens = None
@@ -39,6 +39,9 @@ class Batch:
         while True:
             factor_name = "factor{}".format(idx)
             if hasattr(torch_batch, factor_name):
+                if self.factors is None:
+                    self.factors = []
+                    self.factors_lengths = []
                 factors, factors_lengths = getattr(torch_batch, factor_name)
                 self.factors.append(factors)
                 self.factors_lengths.append(factors_lengths)
@@ -73,7 +76,7 @@ class Batch:
         self.src_mask = self.src_mask.to(self.device)
         self.src_length = self.src_length.to(self.device)
 
-        if self.factors:
+        if self.factors is not None:
             self.factors = self.factors.to(self.device)
 
         if self.trg_input is not None:
@@ -101,7 +104,7 @@ class Batch:
             sorted_trg_mask = self.trg_mask[perm_index]
             sorted_trg = self.trg[perm_index]
 
-        if self.factors:
+        if self.factors is not None:
             sorted_factors = self.factors[:, perm_index]
             sorted_factors_lengths = self.factors_lengths[:, perm_index]
             self.factors = sorted_factors
