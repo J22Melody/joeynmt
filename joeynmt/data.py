@@ -304,8 +304,8 @@ class MonoFactorDataset(Dataset):
         for src_line in src_file:
             src_line = src_line.strip()
 
-            # assuming ||| separator between source and factors
-            parts = [part.strip() for part in src_line.split("|||")]
+            # assuming | separator between source and factors
+            parts = [part.strip() for part in src_line.split("|")]
 
             src_part = parts[0]
             factor_parts = parts[1:]
