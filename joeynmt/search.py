@@ -366,11 +366,19 @@ def beam_search(model: Model, size: int,
                 if end_condition[i]:
                     best_hyp = sorted(
                         hypotheses[b], key=lambda x: x[0], reverse=True)
-                    for n, (score, pred) in enumerate(best_hyp):
-                        if n >= n_best:
-                            break
+                    for n in range(n_best):
+                        if n < len(best_hyp):
+                            score, pred = best_hyp[n]
+                        else:
+                            score = torch.tensor(0).to(device)
+                            pred = torch.tensor([]).to(device)
                         results["scores"][b].append(score)
                         results["predictions"][b].append(pred)
+                    # for n, (score, pred) in enumerate(best_hyp):
+                    #     if n >= n_best:
+                    #         break
+                    #     results["scores"][b].append(score)
+                    #     results["predictions"][b].append(pred)
             non_finished = end_condition.eq(False).nonzero(
                 as_tuple=False).view(-1)
             # if all sentences are translated, no need to go further
