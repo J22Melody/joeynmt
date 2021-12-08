@@ -152,7 +152,12 @@ def load_data(data_cfg: dict, datasets: list = None)\
         logger.info("Loading dev data...")
         dev_data = dataset_class(path=dev_path,
                                  exts=exts,
-                                 fields=fields)
+                                 fields=fields,
+                                 filter_pred=
+                                 lambda x: len(vars(x)['src'])
+                                 <= max_sent_length
+                                 and len(vars(x)['trg'])
+                                 <= max_sent_length)
 
     test_data = None
     if "test" in datasets and test_path is not None:
@@ -161,7 +166,12 @@ def load_data(data_cfg: dict, datasets: list = None)\
         if os.path.isfile(test_path + "." + trg_lang):
             test_data = dataset_class(
                 path=test_path, exts=exts,
-                fields=fields)
+                fields=fields,
+                filter_pred=
+                lambda x: len(vars(x)['src'])
+                <= max_sent_length
+                and len(vars(x)['trg'])
+                <= max_sent_length)
         else:
             # no target is given -> create dataset from src only
             test_data = MonoDataset(path=test_path, ext="." + src_lang,
