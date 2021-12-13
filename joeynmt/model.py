@@ -5,6 +5,7 @@ Module to represents whole models
 from typing import Callable
 import logging
 
+import torch
 from torch import nn, Tensor
 import torch.nn.functional as F
 
@@ -94,11 +95,24 @@ class Model(nn.Module):
 
             out, _, _, _ = self._encode_decode(**kwargs)
 
-            # compute log probs
-            log_probs = F.log_softmax(out, dim=-1)
+            if self.loss_function_mse:
+                # custom MSE loss
+                trg = kwargs["trg"].apply_(lambda x: float(self.trg_vocab.itos[x]) if self.trg_vocab.itos[x].isnumeric() else 0.0).float()
+                # print(trg)
+                probs = F.softmax(out, dim=-1)
+                itos = torch.tensor([float(i) if i.isnumeric() else 0.0 for i in self.trg_vocab.itos]).view(-1, 1)
+                hyps = torch.matmul(probs, itos).squeeze()
+                # print(hyps)
+                # print(hyps.shape)
+                loss = nn.MSELoss()
+                batch_loss = loss(hyps.view(-1), trg.view(-1))
+                print(batch_loss)
+            else:
+                # compute log probs
+                log_probs = F.log_softmax(out, dim=-1)
 
-            # compute batch loss
-            batch_loss = self.loss_function(log_probs, kwargs["trg"])
+                # compute batch loss
+                batch_loss = self.loss_function(log_probs, kwargs["trg"])
 
             # return batch loss
             #     = sum over all elements in batch that are not pad

@@ -80,7 +80,9 @@ class TrainManager:
         # objective
         self.label_smoothing = train_config.get("label_smoothing", 0.0)
         self.model.loss_function = XentLoss(pad_index=self.model.pad_index,
-                                            smoothing=self.label_smoothing)
+                                        smoothing=self.label_smoothing)
+        if train_config.get("loss", "crossentropy") == 'MSE':
+            self.model.loss_function_mse = True
         self.normalization = train_config.get("normalization", "batch")
         if self.normalization not in ["batch", "tokens", "none"]:
             raise ConfigurationError("Invalid normalization option."
