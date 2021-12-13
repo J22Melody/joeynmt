@@ -97,7 +97,7 @@ class Model(nn.Module):
 
             if self.loss_function_mse:
                 # custom MSE loss
-                itos = torch.tensor([float(i) if i.isnumeric() else 0.0 for i in self.trg_vocab.itos]).view(-1, 1)
+                itos = torch.tensor([float(i) if i.isnumeric() else 0.0 for i in self.trg_vocab.itos]).view(-1, 1).to(torch.device("cuda"))
                 trg = F.one_hot(kwargs["trg"], itos.shape[0]).float()
                 trg = torch.matmul(trg, itos).squeeze()
                 # print(trg)
@@ -107,7 +107,6 @@ class Model(nn.Module):
                 # print(hyps.shape)
                 loss = nn.MSELoss()
                 batch_loss = loss(hyps.view(-1), trg.view(-1))
-                print(batch_loss)
             else:
                 # compute log probs
                 log_probs = F.log_softmax(out, dim=-1)
