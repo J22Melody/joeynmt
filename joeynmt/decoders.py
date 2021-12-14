@@ -499,6 +499,7 @@ class TransformerDecoder(Decoder):
 
         self.emb_dropout = nn.Dropout(p=emb_dropout)
         self.output_layer = nn.Linear(hidden_size, vocab_size, bias=False)
+        self.output_layer_factors = nn.Linear(hidden_size, 2, bias=False)
 
         if freeze:
             freeze_params(self)
@@ -540,8 +541,9 @@ class TransformerDecoder(Decoder):
 
         x = self.layer_norm(x)
         output = self.output_layer(x)
+        output_factors = self.output_layer_factors(x)
 
-        return output, x, None, None
+        return output, output_factors, None, None
 
     def __repr__(self):
         return "%s(num_layers=%r, num_heads=%r)" % (

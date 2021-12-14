@@ -93,26 +93,33 @@ class Model(nn.Module):
         if return_type == "loss":
             assert self.loss_function is not None
 
-            out, _, _, _ = self._encode_decode(**kwargs)
+            out, out_factors, _, _ = self._encode_decode(**kwargs)
 
-            if self.loss_function_mse:
-                # custom MSE loss
-                itos = torch.tensor([float(i) if i.isnumeric() else 0.0 for i in self.trg_vocab.itos]).view(-1, 1).to(torch.device("cuda"))
-                trg = F.one_hot(kwargs["trg"], itos.shape[0]).float()
-                trg = torch.matmul(trg, itos).squeeze()
-                # print(trg)
-                probs = F.softmax(out, dim=-1)
-                hyps = torch.matmul(probs, itos).squeeze()
-                # print(hyps)
-                # print(hyps.shape)
-                loss = nn.MSELoss()
-                batch_loss = loss(hyps.view(-1), trg.view(-1))
-            else:
-                # compute log probs
-                log_probs = F.log_softmax(out, dim=-1)
+            # # custom MSE loss
+            # itos = torch.tensor([float(i) if i.isnumeric() else 0.0 for i in self.trg_vocab.itos]).view(-1, 1).to(torch.device("cuda"))
+            # trg = F.one_hot(kwargs["trg"], itos.shape[0]).float()
+            # trg = torch.matmul(trg, itos).squeeze()
+            # # print(trg)
+            # probs = F.softmax(out, dim=-1)
+            # hyps = torch.matmul(probs, itos).squeeze()
+            # # print(hyps)
+            # # print(hyps.shape)
+            # loss = nn.MSELoss()
+            # batch_loss = loss(hyps.view(-1), trg.view(-1))
 
-                # compute batch loss
-                batch_loss = self.loss_function(log_probs, kwargs["trg"])
+            # factor loss
+            loss = nn.SmoothL1Loss()
+            trg_factors = torch.full(out_factors.shape, 500.0)
+            loss_factors = loss(out_factors, trg_factors)
+            print(loss_factors)
+
+            # compute log probs
+            log_probs = F.log_softmax(out, dim=-1)
+
+            # compute batch loss
+            batch_loss = self.loss_function(log_probs, kwargs["trg"])
+            print(batch_loss)
+            batch_loss = batch_loss + loss_factors
 
             # return batch loss
             #     = sum over all elements in batch that are not pad
